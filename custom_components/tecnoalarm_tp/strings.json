@@ -1,0 +1,34 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connect to Tecnoalarm TP panel",
+                "description": "Enter the panel's IP connection parameters (port 10001-10004).",
+                "data": {
+                    "host": "IP address",
+                    "port": "Port",
+                    "code": "User code (PIN)",
+                    "passphrase": "Port passphrase (leave empty if not set)",
+                    "n_programs": "Number of programs",
+                    "n_zones": "Number of zones",
+                    "update_interval": "Update interval (seconds)"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Connection or authentication failed. Check IP, port, code and passphrase."
+        },
+        "abort": {
+            "already_configured": "This panel (IP:port) is already configured."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "update_interval": "Update interval (seconds)"
+                }
+            }
+        }
+    }
+}

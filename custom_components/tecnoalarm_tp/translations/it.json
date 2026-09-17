@@ -1,0 +1,34 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connessione alla centrale Tecnoalarm TP",
+                "description": "Inserisci i parametri di connessione IP della centrale (porta 10001-10004).",
+                "data": {
+                    "host": "Indirizzo IP",
+                    "port": "Porta",
+                    "code": "Codice utente (PIN)",
+                    "passphrase": "Passphrase della porta (vuota se non impostata)",
+                    "n_programs": "Numero di programmi",
+                    "n_zones": "Numero di zone",
+                    "update_interval": "Intervallo di aggiornamento (secondi)"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Connessione o autenticazione fallita. Verifica IP, porta, codice e passphrase."
+        },
+        "abort": {
+            "already_configured": "Questa centrale (IP:porta) e' gia' configurata."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "update_interval": "Intervallo di aggiornamento (secondi)"
+                }
+            }
+        }
+    }
+}
