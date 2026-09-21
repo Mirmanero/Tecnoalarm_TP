@@ -3,7 +3,7 @@ import logging
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -35,9 +35,11 @@ def _guess_device_class(name: str) -> BinarySensorDeviceClass:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: TecnoalarmTPCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        ZoneBinarySensor(coordinator, idx, entry) for idx in coordinator.zone_indices
-    )
+    entities = []
+    for idx in coordinator.zone_indices:
+        entities.append(ZoneBinarySensor(coordinator, idx, entry))
+        entities.append(ZoneBatteryBinarySensor(coordinator, idx, entry))
+    async_add_entities(entities)
 
 
 class ZoneBinarySensor(CoordinatorEntity, BinarySensorEntity):
@@ -64,3 +66,24 @@ class ZoneBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def extra_state_attributes(self) -> dict:
         zone = self.coordinator.data["zones"].get(self._idx)
         return {"excluded": bool(zone.excluded)} if zone is not None else {}
+
+
+class ZoneBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor per la batteria di una zona: on = batteria scarica."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = BinarySensorDeviceClass.BATTERY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: TecnoalarmTPCoordinator, idx: int, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._idx = idx
+        self._entry = entry
+        name = coordinator.zone_names.get(idx) or f"Zona {idx + 1}"
+        self._attr_name = f"{name} batteria"
+        self._attr_unique_id = f"{entry.entry_id}_zone_{idx}_battery"
+        self._attr_device_info = _device_info(entry)
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data["battery"].get(self._idx)

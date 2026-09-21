@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover
 # Chiave usata quando la porta della centrale non ha una passphrase impostata.
 DEFAULT_KEY = bytes.fromhex("5807d29adf204c1a690831e2f371bac9")
 
-_DLE, _STX = 0x10, 0x02
+_DLE, _STX, _ETX = 0x10, 0x02, 0x03
 _REC_AUTH, _REC_MKOPER = 2305, 2306
 _REC_STATZON, _REC_GRU = 2316, 2317
 _REC_PNAME, _REC_ZNAME, _REC_TNAME = 2307, 2310, 2308
@@ -36,6 +36,15 @@ _OP_TELEC_ON, _OP_TELEC_OFF = 11, 12
 # Comandi del protocollo "diretto" (usati dal software Centro) per il GSM.
 # Frame: 10 02 | cmd(2) | idx(2) | datalen(2) | dati | crc; risposta 10 0c ...
 _CMD_GSM_INFO = 0x9995   # operatore + versione/modello modulo GSM
+
+# Protocollo "gateway": un sotto-protocollo con framing diverso da quello
+# usato per AUTH/STATZON/GRU (DLE STX <payload DLE-stuffato> <crc16 LE>
+# DLE ETX, nessun header lunghezza fisso: il payload e' delimitato dal
+# marker 0x7E). Funziona sulla stessa connessione persistente gia'
+# autenticata, senza handshake separato.
+_GATEWAY_CMD10_PAYLOAD = bytes.fromhex("1000000001002e")
+_GATEWAY_ZONE_MARKER = 0x7E
+_GATEWAY_STATUS_LOWBAT = 0x84
 
 PROGRAM_STATES = {
     0: "riposo", 1: "pre-uscita", 2: "in uscita", 3: "inserito",
@@ -172,6 +181,35 @@ def _dle_encode(data):
         out.append(b)
         if b == _DLE:
             out.append(_DLE)
+    return bytes(out)
+
+
+def _gateway_frame(payload):
+    """Framing del protocollo gateway: DLE STX <payload stuffato> <crc16 LE> DLE ETX."""
+    out = bytearray([_DLE, _STX])
+    for b in payload:
+        out.append(b)
+        if b == _DLE:
+            out.append(_DLE)
+    crc = _crc16(payload)
+    out.append(crc & 0xFF)
+    out.append((crc >> 8) & 0xFF)
+    out.append(_DLE)
+    out.append(_ETX)
+    return bytes(out)
+
+
+def _gateway_unstuff(data):
+    out = bytearray()
+    skip = False
+    for b in data:
+        if skip:
+            out.append(b)
+            skip = False
+        elif b == _DLE:
+            skip = True
+        else:
+            out.append(b)
     return bytes(out)
 
 
@@ -444,6 +482,60 @@ class TP42Panel(object):
             zs = self._get(_REC_STATZON, i) or b"\x00\x00\x00\x00"
             out.append(Zone(i + 1, names[i] if i < len(names) else "", zs))
         return out
+
+    def _read_gateway(self, total_timeout=3.0):
+        """Legge la risposta di un comando "gateway" (framing DLE STX ...
+        DLE ETX, marker 0x7E prima dei dati) sulla connessione persistente
+        gia' aperta. A differenza di _read_frame/_read_direct, questo canale
+        non annuncia una lunghezza fissa nell'header: si accumula finche'
+        arrivano dati o scade il timeout, poi si cerca il marker."""
+        buf = bytearray()
+        self._s.settimeout(0.3)
+        t0 = time.time()
+        while time.time() - t0 < total_timeout:
+            try:
+                c = self._s.recv(4096)
+                if not c:
+                    self.close()
+                    return None
+                buf.extend(c)
+            except socket.timeout:
+                if buf:
+                    break
+                continue
+        if not buf:
+            return None
+        return _gateway_unstuff(self._cip.dec(bytes(buf)))
+
+    def get_zone_battery(self, n_zones=None):
+        """Stato batteria delle zone tramite il comando CMD10 del protocollo
+        "gateway". Riusa la stessa connessione persistente gia' autenticata
+        (nessun secondo socket: la centrale accetta una sola connessione
+        alla volta sulla porta, verificato sul campo) senza handshake INIT.
+
+        Ritorna {n_zona (1-based): True/False} = batteria scarica.
+        Solleva TP42Error se la lettura fallisce dopo i tentativi.
+        """
+        n_zones = n_zones or self.n_zones
+        for _ in range(2):
+            if self._s is None:
+                self.connect()
+            try:
+                self._s.sendall(self._cip.enc(_gateway_frame(_GATEWAY_CMD10_PAYLOAD)))
+                dec = self._read_gateway()
+                if dec is not None and _GATEWAY_ZONE_MARKER in dec:
+                    payload = dec[dec.index(_GATEWAY_ZONE_MARKER) + 1:]
+                    out = {}
+                    for i in range(n_zones):
+                        base = i * 3
+                        if base + 1 >= len(payload):
+                            break
+                        out[i + 1] = payload[base + 1] == _GATEWAY_STATUS_LOWBAT
+                    return out
+            except Exception:
+                pass
+            self.close()
+        raise TP42Error("lettura batteria zone fallita")
 
     def isolate_zone(self, zone):
         """Esclude (isola) la zona indicata (1-based). True se ACK.
