@@ -26,9 +26,9 @@ def _guess_device_class(name: str) -> BinarySensorDeviceClass:
     n = name.lower()
     if "porta" in n:
         return BinarySensorDeviceClass.DOOR
-    if "fin" in n or "scorrev" in n or "bascula" in n:
+    if "fin" in n or "persian" in n or "scorrev" in n or "bascul" in n:
         return BinarySensorDeviceClass.WINDOW
-    if "vol" in n or "dt" in n or "vx" in n:
+    if "vol" in n or "dt" in n or "vx" in n or "sensore" in n or "movimento" in n:
         return BinarySensorDeviceClass.MOTION
     return BinarySensorDeviceClass.OPENING
 
