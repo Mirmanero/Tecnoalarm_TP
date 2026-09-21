@@ -9,8 +9,6 @@
                     "port": "Port",
                     "code": "User code (PIN)",
                     "passphrase": "Port passphrase (leave empty if not set)",
-                    "n_programs": "Number of programs",
-                    "n_zones": "Number of zones",
                     "update_interval": "Update interval (seconds)"
                 }
             }

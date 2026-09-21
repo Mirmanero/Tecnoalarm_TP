@@ -9,8 +9,6 @@
                     "port": "Porta",
                     "code": "Codice utente (PIN)",
                     "passphrase": "Passphrase della porta (vuota se non impostata)",
-                    "n_programs": "Numero di programmi",
-                    "n_zones": "Numero di zone",
                     "update_interval": "Intervallo di aggiornamento (secondi)"
                 }
             }

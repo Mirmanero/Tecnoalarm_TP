@@ -5,15 +5,13 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_CODE,
-    CONF_N_PROGRAMS,
-    CONF_N_ZONES,
     CONF_PASSPHRASE,
     CONF_UPDATE_INTERVAL,
     CONNECT_TIMEOUT,
-    DEFAULT_N_PROGRAMS,
-    DEFAULT_N_ZONES,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    PROBE_N_PROGRAMS,
+    PROBE_N_ZONES,
 )
 from .coordinator import TecnoalarmTPCoordinator
 from .tecnoalarm_tp42 import TP42Panel
@@ -36,8 +34,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data["port"],
         code=data[CONF_CODE],
         passphrase=data.get(CONF_PASSPHRASE, ""),
-        n_programs=data.get(CONF_N_PROGRAMS, DEFAULT_N_PROGRAMS),
-        n_zones=data.get(CONF_N_ZONES, DEFAULT_N_ZONES),
+        n_programs=PROBE_N_PROGRAMS,
+        n_zones=PROBE_N_ZONES,
         timeout=CONNECT_TIMEOUT,
     )
 

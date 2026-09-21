@@ -7,18 +7,16 @@ from homeassistant.core import callback
 
 from .const import (
     CONF_CODE,
-    CONF_N_PROGRAMS,
-    CONF_N_ZONES,
     CONF_PASSPHRASE,
     CONF_UPDATE_INTERVAL,
     CONNECT_TIMEOUT,
-    DEFAULT_N_PROGRAMS,
-    DEFAULT_N_ZONES,
     DEFAULT_PORT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     MAX_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL,
+    PROBE_N_PROGRAMS,
+    PROBE_N_ZONES,
 )
 from .tecnoalarm_tp42 import TP42Panel, TP42Error
 
@@ -30,8 +28,6 @@ VOL_SCHEMA_USER = vol.Schema(
         vol.Required("port", default=DEFAULT_PORT): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
         vol.Required(CONF_CODE): str,
         vol.Optional(CONF_PASSPHRASE, default=""): str,
-        vol.Optional(CONF_N_PROGRAMS, default=DEFAULT_N_PROGRAMS): vol.All(vol.Coerce(int), vol.Range(min=1, max=32)),
-        vol.Optional(CONF_N_ZONES, default=DEFAULT_N_ZONES): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
         vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
             vol.Coerce(int), vol.Range(min=MIN_UPDATE_INTERVAL, max=MAX_UPDATE_INTERVAL)
         ),
@@ -39,10 +35,10 @@ VOL_SCHEMA_USER = vol.Schema(
 )
 
 
-def _try_connect(host, port, code, passphrase, n_programs, n_zones):
+def _try_connect(host, port, code, passphrase):
     with TP42Panel(
         host, port, code=code, passphrase=passphrase,
-        n_programs=n_programs, n_zones=n_zones, timeout=CONNECT_TIMEOUT,
+        n_programs=PROBE_N_PROGRAMS, n_zones=PROBE_N_ZONES, timeout=CONNECT_TIMEOUT,
     ):
         pass
 
@@ -65,8 +61,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     port,
                     user_input[CONF_CODE],
                     user_input.get(CONF_PASSPHRASE, ""),
-                    user_input[CONF_N_PROGRAMS],
-                    user_input[CONF_N_ZONES],
                 )
             except TP42Error as err:
                 _LOGGER.debug("Autenticazione fallita: %s", err)
@@ -83,8 +77,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "port": port,
                         CONF_CODE: user_input[CONF_CODE],
                         CONF_PASSPHRASE: user_input.get(CONF_PASSPHRASE, ""),
-                        CONF_N_PROGRAMS: user_input[CONF_N_PROGRAMS],
-                        CONF_N_ZONES: user_input[CONF_N_ZONES],
                         CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL],
                     },
                 )
