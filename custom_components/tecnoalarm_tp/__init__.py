@@ -18,7 +18,7 @@ from .tecnoalarm_tp42 import TP42Panel
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["switch", "binary_sensor"]
+PLATFORMS = ["switch", "binary_sensor", "sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

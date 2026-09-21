@@ -27,4 +27,9 @@ MAX_UPDATE_INTERVAL = 60
 # zone (lettura piu' lenta, ~2s per 42 zone: non ha senso farla ad ogni tick).
 ZONE_POLL_EVERY_N_TICKS = 4
 
+# La batteria delle zone cambia lentissimamente: rileggerla ogni 20s (come le
+# zone) e' inutile. Intervallo indipendente, in secondi (tempo reale, non
+# tick, cosi' resta valido anche cambiando update_interval dalle opzioni).
+BATTERY_POLL_INTERVAL_SECONDS = 3600
+
 CONNECT_TIMEOUT = 8

@@ -5,12 +5,13 @@ autenticata per tutta la vita della config entry, come raccomandato dalla
 libreria tecnoalarm_tp42) e la interroga a intervalli regolari.
 """
 import logging
+import time
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import ZONE_POLL_EVERY_N_TICKS
+from .const import BATTERY_POLL_INTERVAL_SECONDS, ZONE_POLL_EVERY_N_TICKS
 from .tecnoalarm_tp42 import TP42Panel
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
         self._tick = 0
         self._last_zones: dict[int, object] = {}
         self._last_battery: dict[int, bool] = {}
+        self._last_battery_monotonic: float = 0.0
 
     async def _async_setup(self) -> None:
         """Connessione iniziale + individuazione di programmi/zone configurati."""
@@ -54,6 +56,7 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
         try:
             battery = await self.hass.async_add_executor_job(self.panel.get_zone_battery)
             self._last_battery = {n - 1: low for n, low in battery.items()}
+            self._last_battery_monotonic = time.monotonic()
         except Exception as err:
             _LOGGER.warning("Lettura iniziale batteria zone fallita: %s", err)
 
@@ -71,9 +74,13 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
             zones = self.panel.get_zones(names=[self.zone_names.get(i, "") for i in range(self.panel.n_zones)])
             self._last_zones = {z.n - 1: z for z in zones if z.configured}
 
+        # La batteria cambia lentissimamente: intervallo proprio, molto piu'
+        # largo di quello delle zone (vedi BATTERY_POLL_INTERVAL_SECONDS).
+        if time.monotonic() - self._last_battery_monotonic >= BATTERY_POLL_INTERVAL_SECONDS:
             try:
                 battery = self.panel.get_zone_battery()
                 self._last_battery = {n - 1: low for n, low in battery.items()}
+                self._last_battery_monotonic = time.monotonic()
             except Exception as err:
                 _LOGGER.warning("Lettura batteria zone fallita, mantengo l'ultimo valore noto: %s", err)
 

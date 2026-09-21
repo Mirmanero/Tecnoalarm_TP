@@ -10,8 +10,8 @@ Vendorizzato in questa integrazione da https://github.com/ (tecnoalarm-tp42),
 con una sola aggiunta: la proprieta' TP42Panel.connected (vedi client.py).
 """
 from .client import (TP42Panel, Program, Zone, Telecommand, PanelStatus,
-                     TP42Error, DEFAULT_KEY)
+                     TP42Error, DEFAULT_KEY, PROGRAM_STATES)
 
 __all__ = ["TP42Panel", "Program", "Zone", "Telecommand", "PanelStatus",
-           "TP42Error", "DEFAULT_KEY"]
+           "TP42Error", "DEFAULT_KEY", "PROGRAM_STATES"]
 __version__ = "1.4.0"
