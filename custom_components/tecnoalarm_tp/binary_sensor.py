@@ -22,6 +22,11 @@ def _device_info(entry: ConfigEntry) -> DeviceInfo:
     )
 
 
+def _zone_label(coordinator: TecnoalarmTPCoordinator, idx: int) -> str:
+    name = coordinator.zone_names.get(idx) or ""
+    return f"Zona {idx + 1} {name}".strip()
+
+
 def _guess_device_class(name: str) -> BinarySensorDeviceClass:
     n = name.lower()
     if "porta" in n:
@@ -51,11 +56,10 @@ class ZoneBinarySensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self._idx = idx
         self._entry = entry
-        name = coordinator.zone_names.get(idx) or f"Zona {idx + 1}"
-        self._attr_name = name
+        self._attr_name = _zone_label(coordinator, idx)
         self._attr_unique_id = f"{entry.entry_id}_zone_{idx}"
         self._attr_device_info = _device_info(entry)
-        self._attr_device_class = _guess_device_class(name)
+        self._attr_device_class = _guess_device_class(coordinator.zone_names.get(idx) or "")
 
     @property
     def is_on(self) -> bool | None:
@@ -79,8 +83,7 @@ class ZoneBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self._idx = idx
         self._entry = entry
-        name = coordinator.zone_names.get(idx) or f"Zona {idx + 1}"
-        self._attr_name = f"{name} batteria"
+        self._attr_name = f"{_zone_label(coordinator, idx)} batteria"
         self._attr_unique_id = f"{entry.entry_id}_zone_{idx}_battery"
         self._attr_device_info = _device_info(entry)
 
