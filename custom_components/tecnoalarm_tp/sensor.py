@@ -33,13 +33,14 @@ class ProgramStateSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(PROGRAM_STATES.values())
+    _attr_icon = "mdi:shield-home"
 
     def __init__(self, coordinator: TecnoalarmTPCoordinator, idx: int, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._idx = idx
         self._entry = entry
         base_name = coordinator.program_names.get(idx) or f"Programma {idx + 1}"
-        self._attr_name = f"{base_name} stato"
+        self._attr_name = f"Stato Programma {base_name}"
         self._attr_unique_id = f"{entry.entry_id}_program_{idx}_state"
         self._attr_device_info = _device_info(entry)
 
