@@ -4,10 +4,12 @@ from typing import Any
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .const import (
     CONF_CODE,
     CONF_PASSPHRASE,
+    CONF_PROGRAM_ZONES,
     CONF_UPDATE_INTERVAL,
     CONNECT_TIMEOUT,
     DEFAULT_PORT,
@@ -94,19 +96,48 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         super().__init__()
         self._config_entry = config_entry
 
+    def _coordinator(self):
+        """La coordinator gia' attiva per questa entry, se disponibile (per
+        conoscere i programmi/zone realmente scoperti sulla centrale senza
+        doversi riconnettere qui)."""
+        return self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id)
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> config_entries.ConfigFlowResult:
+        coordinator = self._coordinator()
+
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            program_zones = dict(self._config_entry.options.get(CONF_PROGRAM_ZONES, {}))
+            if coordinator is not None:
+                for pidx in coordinator.program_indices:
+                    key = f"zones_program_{pidx}"
+                    if key in user_input:
+                        program_zones[str(pidx)] = [int(z) for z in user_input.pop(key)]
+
+            data = dict(user_input)
+            data[CONF_PROGRAM_ZONES] = program_zones
+            return self.async_create_entry(title="", data=data)
 
         current = self._config_entry.options.get(
             CONF_UPDATE_INTERVAL,
             self._config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
         )
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_UPDATE_INTERVAL, default=current): vol.All(
-                    vol.Coerce(int), vol.Range(min=MIN_UPDATE_INTERVAL, max=MAX_UPDATE_INTERVAL)
-                ),
-            }
-        )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        schema_dict = {
+            vol.Required(CONF_UPDATE_INTERVAL, default=current): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_UPDATE_INTERVAL, max=MAX_UPDATE_INTERVAL)
+            ),
+        }
+
+        if coordinator is not None:
+            saved = self._config_entry.options.get(CONF_PROGRAM_ZONES, {})
+            zone_options = [
+                {"label": coordinator.zone_names.get(zidx) or f"Zona {zidx + 1}", "value": str(zidx)}
+                for zidx in coordinator.zone_indices
+            ]
+            for pidx in coordinator.program_indices:
+                pname = coordinator.program_names.get(pidx) or f"Programma {pidx + 1}"
+                default = [str(z) for z in saved.get(str(pidx), [])]
+                schema_dict[
+                    vol.Optional(f"zones_program_{pidx}", default=default)
+                ] = SelectSelector(SelectSelectorConfig(options=zone_options, multiple=True))
+
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_dict))

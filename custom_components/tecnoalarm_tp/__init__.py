@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_CODE,
     CONF_PASSPHRASE,
+    CONF_PROGRAM_ZONES,
     CONF_UPDATE_INTERVAL,
     CONNECT_TIMEOUT,
     DEFAULT_UPDATE_INTERVAL,
@@ -41,6 +42,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = TecnoalarmTPCoordinator(hass, panel, update_interval)
     await coordinator.async_config_entry_first_refresh()
+
+    program_zones_raw = entry.options.get(CONF_PROGRAM_ZONES, {})
+    coordinator.program_zones = {
+        int(pidx): [int(z) for z in zones]
+        for pidx, zones in program_zones_raw.items()
+        if int(pidx) in coordinator.program_indices
+    }
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 

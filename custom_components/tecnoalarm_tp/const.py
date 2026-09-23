@@ -5,6 +5,10 @@ DOMAIN = "tecnoalarm_tp"
 CONF_CODE = "code"
 CONF_PASSPHRASE = "passphrase"
 CONF_UPDATE_INTERVAL = "update_interval"
+# Mappatura zona->programma: il protocollo diretto TP42 non la espone (a
+# differenza dell'API cloud), va configurata manualmente nelle Opzioni.
+# Salvata come {str(program_idx): [zone_idx, ...]}.
+CONF_PROGRAM_ZONES = "program_zones"
 
 DEFAULT_PORT = 10001
 DEFAULT_UPDATE_INTERVAL = 5

@@ -30,6 +30,10 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
         self.zone_indices: list[int] = []
         self.program_names: dict[int, str] = {}
         self.zone_names: dict[int, str] = {}
+        # Mappatura programma->zone (indici 0-based), configurata dall'utente
+        # nelle Opzioni: il protocollo locale non la espone. Impostata da
+        # __init__.py dopo la creazione della coordinator.
+        self.program_zones: dict[int, list[int]] = {}
         self._tick = 0
         self._last_zones: dict[int, object] = {}
         self._last_battery: dict[int, bool] = {}

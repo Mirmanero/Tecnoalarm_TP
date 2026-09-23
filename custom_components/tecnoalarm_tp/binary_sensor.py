@@ -44,6 +44,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     for idx in coordinator.zone_indices:
         entities.append(ZoneBinarySensor(coordinator, idx, entry))
         entities.append(ZoneBatteryBinarySensor(coordinator, idx, entry))
+    for pidx, zone_idxs in coordinator.program_zones.items():
+        if zone_idxs:
+            entities.append(ProgramZonesClosedBinarySensor(coordinator, pidx, zone_idxs, entry))
     async_add_entities(entities)
 
 
@@ -90,3 +93,34 @@ class ZoneBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         return self.coordinator.data["battery"].get(self._idx)
+
+
+class ProgramZonesClosedBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor per programma: on = tutte le zone assegnate sono chiuse,
+    off = almeno una e' aperta. La mappatura zona->programma non e' esposta
+    dal protocollo locale: va configurata nelle Opzioni dell'integrazione."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: TecnoalarmTPCoordinator, program_idx: int, zone_idxs: list[int], entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._program_idx = program_idx
+        self._zone_idxs = zone_idxs
+        self._entry = entry
+        pname = coordinator.program_names.get(program_idx) or f"Programma {program_idx + 1}"
+        self._attr_name = f"{pname} zone chiuse"
+        self._attr_unique_id = f"{entry.entry_id}_program_{program_idx}_zones_closed"
+        self._attr_device_info = _device_info(entry)
+
+    @property
+    def is_on(self) -> bool | None:
+        zones = self.coordinator.data["zones"]
+        for zidx in self._zone_idxs:
+            zone = zones.get(zidx)
+            if zone is not None and zone.open:
+                return False
+        return True
+
+    @property
+    def icon(self) -> str:
+        return "mdi:shield-check" if self.is_on else "mdi:shield-remove"
