@@ -10,12 +10,12 @@ from .coordinator import TecnoalarmTPCoordinator
 from .tecnoalarm_tp42 import PROGRAM_STATES
 
 
-def _device_info(entry: ConfigEntry) -> DeviceInfo:
+def _device_info(coordinator: TecnoalarmTPCoordinator, entry: ConfigEntry) -> DeviceInfo:
     return DeviceInfo(
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.title,
         manufacturer="Tecnoalarm",
-        model="TP42 (locale)",
+        model=f"{coordinator.model_name} (locale)",
     )
 
 
@@ -42,7 +42,7 @@ class ProgramStateSensor(CoordinatorEntity, SensorEntity):
         base_name = coordinator.program_names.get(idx) or f"Programma {idx + 1}"
         self._attr_name = f"Stato Programma {base_name}"
         self._attr_unique_id = f"{entry.entry_id}_program_{idx}_state"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = _device_info(coordinator, entry)
 
     @property
     def native_value(self) -> str | None:

@@ -30,7 +30,38 @@ _REC_AUTH, _REC_MKOPER = 2305, 2306
 _REC_STATZON, _REC_GRU = 2316, 2317
 _REC_PNAME, _REC_ZNAME, _REC_TNAME = 2307, 2310, 2308
 _REC_STATUS = 2318
+_REC_PANELINFO = 2313
 _REC_ZISOLA, _REC_ZREINT = 2320, 2321   # 0x0910 isola / 0x0911 reintegra zona
+
+# Nomi modello e limiti (n_programmi, n_telecomandi, n_zone, n_codici,
+# capacita' log eventi) per model_id (primo byte del record 2313). Fonte:
+# https://github.com/EnricoDev1/tecnoctl (protocollo dell'app myTecnoalarm),
+# verificato sul campo per il modello 38/TP42 (limiti gia' usati da questa
+# libreria: 8 programmi, 42 zone - coincidono).
+MODEL_NAMES = {
+    33: "TP888", 34: "TP888E", 35: "TP440", 36: "TP440E",
+    38: "TP42", 39: "TP42E", 42: "EV424", 43: "EV424E",
+    45: "TP888P", 46: "TP888PE", 47: "TP312", 48: "TP312E",
+    49: "EV50", 50: "EV50E", 57: "EV150", 58: "EV150E",
+}
+MODEL_LIMITS = {
+    13: (32, 16, 256, 201, 2000),
+    24: (32, 32, 512, 301, 2000),
+    25: (8, 8, 96, 201, 2000),
+    29: (8, 8, 28, 121, 1500), 30: (8, 8, 28, 121, 1500),
+    31: (8, 8, 28, 121, 1500), 32: (8, 8, 28, 121, 1500),
+    33: (8, 8, 88, 201, 1500), 34: (8, 8, 88, 201, 1500),
+    35: (32, 32, 440, 301, 2000), 36: (32, 32, 440, 301, 2000),
+    38: (8, 8, 42, 121, 1500), 39: (8, 8, 42, 121, 1500),
+    40: (8, 8, 28, 121, 1500), 41: (8, 8, 28, 121, 1500),
+    42: (6, 6, 24, 49, 2000), 43: (6, 6, 24, 49, 2000),
+    44: (32, 32, 440, 301, 2000),
+    45: (16, 16, 88, 201, 1500), 46: (16, 16, 88, 201, 1500),
+    47: (32, 32, 312, 301, 2000), 48: (32, 32, 312, 301, 2000),
+    49: (8, 32, 50, 121, 2000), 50: (8, 32, 50, 121, 2000),
+    57: (16, 32, 150, 201, 2000), 58: (16, 32, 150, 201, 2000),
+}
+_MODEL_LIMITS_FALLBACK = (8, 8, 28, 121, 1500)
 _OP_INS, _OP_DIS = 3, 4
 _OP_TELEC_ON, _OP_TELEC_OFF = 11, 12
 # Comandi del protocollo "diretto" (usati dal software Centro) per il GSM.
@@ -559,6 +590,33 @@ class TP42Panel(object):
         pb = gru[4:] if len(gru) > 4 else b""
         return [Program(i + 1, "", pb[i] if i < len(pb) else 0)
                 for i in range(self.n_programs)]
+
+    def get_panel_info(self):
+        """Modello della centrale e relativi limiti (record 2313).
+
+        Ritorna {'model_id', 'model', 'max_programs', 'max_telecommands',
+        'max_zones', 'max_codes', 'event_capacity', 'raw'}. Se il modello
+        non e' in MODEL_NAMES/MODEL_LIMITS (centrale non ancora mappata),
+        usa un nome generico e i limiti minimi piu' prudenti come fallback.
+        Solleva TP42Error se la lettura fallisce.
+        """
+        raw = self._get(_REC_PANELINFO)
+        if not raw:
+            raise TP42Error("lettura info centrale fallita")
+        model_id = raw[0]
+        programs, telecommands, zones, codes, events = MODEL_LIMITS.get(
+            model_id, _MODEL_LIMITS_FALLBACK
+        )
+        return {
+            "model_id": model_id,
+            "model": MODEL_NAMES.get(model_id, f"model-{model_id}"),
+            "max_programs": programs,
+            "max_telecommands": telecommands,
+            "max_zones": zones,
+            "max_codes": codes,
+            "event_capacity": events,
+            "raw": raw.hex(),
+        }
 
     def get_status(self):
         """Stati generali della centrale (allarme, sirene, guasti, GSM...).

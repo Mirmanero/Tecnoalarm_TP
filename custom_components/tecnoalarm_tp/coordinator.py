@@ -26,6 +26,8 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval),
         )
         self.panel = panel
+        self.model_id: int | None = None
+        self.model_name: str = "TP42"
         self.program_indices: list[int] = []
         self.zone_indices: list[int] = []
         self.program_names: dict[int, str] = {}
@@ -44,6 +46,22 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("Setup Tecnoalarm TP coordinator")
         try:
             await self.hass.async_add_executor_job(self.panel.connect)
+
+            try:
+                info = await self.hass.async_add_executor_job(self.panel.get_panel_info)
+                self.model_id = info["model_id"]
+                self.model_name = info["model"]
+                self.panel.n_programs = info["max_programs"]
+                self.panel.n_zones = info["max_zones"]
+                _LOGGER.info(
+                    "Centrale rilevata: %s (model_id=%s) - %d programmi, %d zone max",
+                    self.model_name, self.model_id, self.panel.n_programs, self.panel.n_zones,
+                )
+            except Exception as err:
+                _LOGGER.warning(
+                    "Rilevamento modello centrale fallito, uso i limiti di default (%d programmi, %d zone): %s",
+                    self.panel.n_programs, self.panel.n_zones, err,
+                )
 
             program_names = await self.hass.async_add_executor_job(self.panel.program_names)
             zones = await self.hass.async_add_executor_job(self.panel.get_zones)

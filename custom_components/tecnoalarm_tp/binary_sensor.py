@@ -13,12 +13,12 @@ from .coordinator import TecnoalarmTPCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-def _device_info(entry: ConfigEntry) -> DeviceInfo:
+def _device_info(coordinator: TecnoalarmTPCoordinator, entry: ConfigEntry) -> DeviceInfo:
     return DeviceInfo(
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.title,
         manufacturer="Tecnoalarm",
-        model="TP42 (locale)",
+        model=f"{coordinator.model_name} (locale)",
     )
 
 
@@ -61,7 +61,7 @@ class ZoneBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._entry = entry
         self._attr_name = _zone_label(coordinator, idx)
         self._attr_unique_id = f"{entry.entry_id}_zone_{idx}"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = _device_info(coordinator, entry)
         self._attr_device_class = _guess_device_class(coordinator.zone_names.get(idx) or "")
 
     @property
@@ -88,7 +88,7 @@ class ZoneBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._entry = entry
         self._attr_name = f"{_zone_label(coordinator, idx)} batteria"
         self._attr_unique_id = f"{entry.entry_id}_zone_{idx}_battery"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = _device_info(coordinator, entry)
 
     @property
     def is_on(self) -> bool | None:
@@ -110,7 +110,7 @@ class ProgramZonesClosedBinarySensor(CoordinatorEntity, BinarySensorEntity):
         pname = coordinator.program_names.get(program_idx) or f"Programma {program_idx + 1}"
         self._attr_name = f"{pname} zone chiuse"
         self._attr_unique_id = f"{entry.entry_id}_program_{program_idx}_zones_closed"
-        self._attr_device_info = _device_info(entry)
+        self._attr_device_info = _device_info(coordinator, entry)
 
     @property
     def is_on(self) -> bool | None:
