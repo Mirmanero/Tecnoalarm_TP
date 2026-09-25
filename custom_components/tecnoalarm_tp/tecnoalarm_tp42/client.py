@@ -138,61 +138,78 @@ class Telecommand(object):
             self.n, self.name, "ATTIVO" if self.active else "spento")
 
 
-class PanelStatus(object):
-    """Stati generali della centrale (16 byte).
+# Nomi dei 64 flag di stato generale (record 2318, byte 8-15: un byte per
+# tupla, bit0..bit7 in ordine). Fonte: https://github.com/EnricoDev1/tecnoctl
+# (protocollo app myTecnoalarm). Sostituisce un decode parziale precedente
+# che aveva un bug: siren_internal/siren_external leggevano byte 14
+# (failure_alarm/failure_active) invece del byte 13 corretto.
+GENERAL_STATUS_BITS = (
+    ("standby", "fault", "battery_alarm", "power_alarm", "tamper_active", "anomaly_active", "robbery_active", "technical_active"),
+    ("chime", "line_status", "prealarm", "program_alarm", "access_denied", "alarm", "system_ok", "cellular_status"),
+    ("tamper_alarm", "anomaly_alarm", "false_code_alarm", "false_key_alarm", "alive_alarm", "mask_alarm", "robbery_alarm", "technical_alarm"),
+    ("generic_memory", "exit_time", "maintenance", "call_active", "partial_warning", "automatic_warning", "zones_isolated", "mask_active"),
+    ("tamper_memory", "anomaly_memory", "false_code_memory", "false_key_memory", "call_memory", "battery_memory", "power_memory", "line_memory"),
+    ("cellular_memory", "voice_memory_expired", "answerer_on", "internal_siren", "external_siren", "output_1", "output_2", "local_expansion"),
+    ("panic", "failure_alarm", "failure_active", "mask_key_active", "output_3", "output_4", "isolation_inhibited", "failure_memory"),
+    ("tecno_output_internal_siren", "tecno_output_external_siren", "tecno_output_1", "tecno_output_2", "tecno_output_3", "tecno_output_4", "reserved_6", "reserved_7"),
+)
 
-    Booleani utili: in_alarm, siren_internal, siren_external, panic,
-    tamper, battery_low, mains_loss, faults, gsm_present, standby,
-    exit_time, maintenance, program_alarm, alarm_memory.
+
+class PanelStatus(object):
+    """Stato generale della centrale (record 2318, 16 byte).
+
+    `flags`: dict con i 64 booleani decodificati da GENERAL_STATUS_BITS
+    (nomi originali inglesi, es. flags["internal_siren"]) piu' 6 aggregati
+    comodi (battery, powerless, tamper, anomaly, false_code, false_key).
+    Usa `.get(nome)` o `.flags[nome]`. `in_alarm` combina i flag piu'
+    rilevanti (alarm/panic/sirene) in un singolo booleano.
     """
-    __slots__ = ("raw", "standby", "faults", "battery_low", "mains_loss",
-                 "tamper", "holdup", "program_alarm",
-                 "exit_time", "maintenance", "siren_internal",
-                 "siren_external", "panic", "alarm_memory", "in_alarm")
+    __slots__ = ("raw", "flags", "firmware_nature", "firmware_release",
+                 "hardware_release", "vocabulary_nature", "vocabulary_release",
+                 "supply_voltage_raw", "battery_voltage_raw",
+                 "phone_call_active", "answerer_active", "secure_connection")
 
     def __init__(self, raw):
         raw = raw or b"\x00" * 16
         self.raw = raw
 
-        def bit(i, b):
-            return bool(raw[i] & (1 << b)) if i < len(raw) else False
+        self.firmware_nature = raw[0] if len(raw) > 0 else 0
+        self.firmware_release = raw[1] if len(raw) > 1 else 0
+        self.hardware_release = raw[2] if len(raw) > 2 else 0
+        self.vocabulary_nature = raw[3] if len(raw) > 3 else 0
+        self.vocabulary_release = raw[4] if len(raw) > 4 else 0
+        self.supply_voltage_raw = raw[5] if len(raw) > 5 else 0
+        self.battery_voltage_raw = raw[6] if len(raw) > 6 else 0
+        b7 = raw[7] if len(raw) > 7 else 0
+        self.phone_call_active = bool(b7 & 0x01)
+        self.answerer_active = bool(b7 & 0x02)
+        self.secure_connection = bool(b7 & 0x04)
 
-        # BYTE 9 (idx 8)
-        self.standby = bit(8, 0)
-        self.faults = bit(8, 1)
-        self.battery_low = bit(8, 2)
-        self.mains_loss = bit(8, 3)
-        self.tamper = bit(8, 4)
-        self.holdup = bit(8, 6)
-        # BYTE 10 (idx 9)
-        self.program_alarm = bit(9, 5)
-        # BYTE 12 (idx 11)
-        self.exit_time = bit(11, 1)
-        self.maintenance = bit(11, 2)
-        # BYTE 15 (idx 14)
-        self.panic = bit(14, 0)
-        self.siren_internal = bit(14, 1)
-        self.siren_external = bit(14, 2)
-        # BYTE 11 (idx 10): riepilogo allarmi (manomissione, rapina, tecnico...)
-        alarms = raw[10] if len(raw) > 10 else 0
-        # BYTE 12 (idx 11) bit0: memoria allarme
-        self.alarm_memory = bit(11, 0)
-        self.in_alarm = bool(self.program_alarm or self.siren_internal
-                             or self.siren_external or self.panic or alarms)
+        general = raw[8:16]
+        flags = {}
+        for byte_i, names in enumerate(GENERAL_STATUS_BITS):
+            b = general[byte_i] if byte_i < len(general) else 0
+            for bit_i, name in enumerate(names):
+                flags[name] = bool(b & (1 << bit_i))
+        flags["battery"] = flags["battery_alarm"] or flags["battery_memory"]
+        flags["powerless"] = flags["power_alarm"] or flags["power_memory"]
+        flags["tamper"] = flags["tamper_active"] or flags["tamper_memory"]
+        flags["anomaly"] = flags["anomaly_active"] or flags["anomaly_memory"]
+        flags["false_code"] = flags["false_code_alarm"] or flags["false_code_memory"]
+        flags["false_key"] = flags["false_key_alarm"] or flags["false_key_memory"]
+        self.flags = flags
+
+    def get(self, name, default=False):
+        return self.flags.get(name, default)
+
+    @property
+    def in_alarm(self):
+        f = self.flags
+        return bool(f["alarm"] or f["panic"] or f["internal_siren"] or f["external_siren"])
 
     def __repr__(self):
-        f = []
-        if self.in_alarm:
-            f.append("ALLARME")
-        if self.siren_internal or self.siren_external:
-            f.append("SIRENA")
-        if self.mains_loss:
-            f.append("manca rete")
-        if self.battery_low:
-            f.append("batt. bassa")
-        if self.tamper:
-            f.append("manomissione")
-        return "PanelStatus(%s)" % (", ".join(f) or "ok")
+        active = sorted(name for name, value in self.flags.items() if value)
+        return "PanelStatus(%s)" % (", ".join(active) or "ok")
 
 
 def _crc16(data, start=0, length=None):
