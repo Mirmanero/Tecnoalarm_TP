@@ -138,11 +138,19 @@ class Telecommand(object):
             self.n, self.name, "ATTIVO" if self.active else "spento")
 
 
-# Nomi dei 64 flag di stato generale (record 2318, byte 8-15: un byte per
-# tupla, bit0..bit7 in ordine). Fonte: https://github.com/EnricoDev1/tecnoctl
-# (protocollo app myTecnoalarm). Sostituisce un decode parziale precedente
-# che aveva un bug: siren_internal/siren_external leggevano byte 14
-# (failure_alarm/failure_active) invece del byte 13 corretto.
+# Nomi dei 64 flag di stato generale (record 2318 = REC_DLE_STA_CEN_USER,
+# byte 8-15: un byte per tupla, bit0..bit7 in ordine).
+#
+# Confermato byte-per-byte, bit-per-bit contro il codice originale
+# dell'app ufficiale myTecnoalarm (classi model/GSta.java e
+# model/StaCen.java, decompilate dall'APK con jadx) - non solo contro
+# tecnoctl (https://github.com/EnricoDev1/tecnoctl), che aveva comunque
+# gia' la stessa tabella. In particolare internal_siren/external_siren
+# sono confermati al byte 13 bit3/bit4 (GSta.Sir_Int/Sir_Ext): la
+# versione precedente di questa libreria (tecnoalarm-tp42, fonte
+# indipendente) li metteva erroneamente al byte 14 bit1/bit2, dove in
+# realta' si trovano failure_alarm/failure_active - quello era un bug
+# reale, non solo una tabella alternativa.
 GENERAL_STATUS_BITS = (
     ("standby", "fault", "battery_alarm", "power_alarm", "tamper_active", "anomaly_active", "robbery_active", "technical_active"),
     ("chime", "line_status", "prealarm", "program_alarm", "access_denied", "alarm", "system_ok", "cellular_status"),
