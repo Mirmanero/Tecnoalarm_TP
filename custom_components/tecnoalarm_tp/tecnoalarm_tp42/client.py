@@ -64,6 +64,13 @@ MODEL_LIMITS = {
 _MODEL_LIMITS_FALLBACK = (8, 8, 28, 121, 1500)
 _OP_INS, _OP_DIS = 3, 4
 _OP_TELEC_ON, _OP_TELEC_OFF = 11, 12
+# OP_LISTZONEOPEN_EXCL_IP: chiede alla centrale quali zone (tra quelle
+# assegnate al programma indicato) sono attualmente aperte. La centrale
+# applica internamente la propria mappatura zona<->programma (che il
+# protocollo non espone altrimenti) e risponde solo con le zone di quel
+# programma. Confermato sul campo: distingue correttamente zone condivise
+# da piu' programmi e zone non assegnate a nessun programma.
+_OP_LISTZONEOPEN = 24
 # Comandi del protocollo "diretto" (usati dal software Centro) per il GSM.
 # Frame: 10 02 | cmd(2) | idx(2) | datalen(2) | dati | crc; risposta 10 0c ...
 _CMD_GSM_INFO = 0x9995   # operatore + versione/modello modulo GSM
@@ -776,3 +783,43 @@ class TP42Panel(object):
     def disarm(self, program):
         """Disinserisce (disarma) il programma indicato (1-based)."""
         return self._oper(_OP_DIS, program)
+
+    def list_open_zones_for_program(self, program):
+        """Zone aperte assegnate al programma indicato (1-based), secondo la
+        centrale stessa (comando MKOPER 24 = OP_LISTZONEOPEN_EXCL_IP).
+
+        La centrale applica la propria mappatura zona<->programma (non
+        altrimenti leggibile via protocollo) e risponde solo con le zone di
+        quel programma che sono aperte in questo momento - zone chiuse o
+        non assegnate al programma non compaiono.
+
+        Ritorna una lista di numeri di zona (1-based). Solleva TP42Error se
+        il comando fallisce dopo i tentativi.
+        """
+        p = bytearray(60)
+        p[0] = _OP_LISTZONEOPEN
+        p[1] = int(program) - 1
+        p[4] = self.utn & 0xFF
+        p[5] = (self.utn >> 8) & 0xFF
+        p[6] = 0x0E
+        p[7] = 0x20
+        for _ in range(2):
+            if self._s is None:
+                self.connect()
+            try:
+                r = self._raw(_REC_MKOPER, 0, bytes(p), self.utn)
+                if r is not None and len(r) >= 4 and r[0] == 0x06:
+                    n_open = r[2] | (r[3] << 8)
+                    zones = []
+                    for i in range(min(n_open, 50)):
+                        off = 4 + i * 2
+                        if off + 1 >= len(r):
+                            break
+                        zn = r[off] | (r[off + 1] << 8)
+                        if zn:
+                            zones.append(zn)
+                    return zones
+            except Exception:
+                pass
+            self.close()
+        raise TP42Error("lettura zone aperte per programma fallita")

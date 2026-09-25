@@ -44,9 +44,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     for idx in coordinator.zone_indices:
         entities.append(ZoneBinarySensor(coordinator, idx, entry))
         entities.append(ZoneBatteryBinarySensor(coordinator, idx, entry))
-    for pidx, zone_idxs in coordinator.program_zones.items():
-        if zone_idxs:
-            entities.append(ProgramZonesClosedBinarySensor(coordinator, pidx, zone_idxs, entry))
+    for pidx in coordinator.program_indices:
+        entities.append(ProgramZonesClosedBinarySensor(coordinator, pidx, entry))
     async_add_entities(entities)
 
 
@@ -97,15 +96,15 @@ class ZoneBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
 class ProgramZonesClosedBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Binary sensor per programma: on = tutte le zone assegnate sono chiuse,
-    off = almeno una e' aperta. La mappatura zona->programma non e' esposta
-    dal protocollo locale: va configurata nelle Opzioni dell'integrazione."""
+    off = almeno una e' aperta. Interroga direttamente la centrale (comando
+    24, list_open_zones_for_program): e' la centrale stessa ad applicare la
+    propria mappatura zona<->programma, non serve configurarla."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: TecnoalarmTPCoordinator, program_idx: int, zone_idxs: list[int], entry: ConfigEntry) -> None:
+    def __init__(self, coordinator: TecnoalarmTPCoordinator, program_idx: int, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._program_idx = program_idx
-        self._zone_idxs = zone_idxs
         self._entry = entry
         pname = coordinator.program_names.get(program_idx) or f"Programma {program_idx + 1}"
         self._attr_name = f"{pname} zone chiuse"
@@ -113,13 +112,15 @@ class ProgramZonesClosedBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._attr_device_info = _device_info(coordinator, entry)
 
     @property
-    def is_on(self) -> bool | None:
-        zones = self.coordinator.data["zones"]
-        for zidx in self._zone_idxs:
-            zone = zones.get(zidx)
-            if zone is not None and zone.open:
-                return False
-        return True
+    def is_on(self) -> bool:
+        open_zones = self.coordinator.data["open_zones_by_program"].get(self._program_idx, [])
+        return len(open_zones) == 0
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        open_zones = self.coordinator.data["open_zones_by_program"].get(self._program_idx, [])
+        names = [self.coordinator.zone_names.get(z - 1, f"Zona {z}") for z in open_zones]
+        return {"open_zones": names}
 
     @property
     def icon(self) -> str:

@@ -32,14 +32,17 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
         self.zone_indices: list[int] = []
         self.program_names: dict[int, str] = {}
         self.zone_names: dict[int, str] = {}
-        # Mappatura programma->zone (indici 0-based), configurata dall'utente
-        # nelle Opzioni: il protocollo locale non la espone. Impostata da
-        # __init__.py dopo la creazione della coordinator.
-        self.program_zones: dict[int, list[int]] = {}
         self._tick = 0
         self._last_zones: dict[int, object] = {}
         self._last_battery: dict[int, bool] = {}
         self._last_battery_monotonic: float = 0.0
+        # Zone aperte per programma (idx 0-based -> lista numeri zona
+        # 1-based), lette dalla centrale stessa (comando 24) - vedi _poll.
+        self._last_open_zones_by_program: dict[int, list[int]] = {}
+        # Zone isolate automaticamente per permettere l'ultimo arm di un
+        # programma (idx 0-based -> lista numeri zona 1-based), da
+        # reintegrare al disarm dello stesso programma.
+        self._auto_isolated_zones: dict[int, list[int]] = {}
 
     async def _async_setup(self) -> None:
         """Connessione iniziale + individuazione di programmi/zone configurati."""
@@ -96,6 +99,15 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
             zones = self.panel.get_zones(names=[self.zone_names.get(i, "") for i in range(self.panel.n_zones)])
             self._last_zones = {z.n - 1: z for z in zones if z.configured}
 
+            for idx in self.program_indices:
+                try:
+                    self._last_open_zones_by_program[idx] = self.panel.list_open_zones_for_program(idx + 1)
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Lettura zone aperte per il programma %d fallita, mantengo l'ultimo valore noto: %s",
+                        idx + 1, err,
+                    )
+
         # La batteria cambia lentissimamente: intervallo proprio, molto piu'
         # largo di quello delle zone (vedi BATTERY_POLL_INTERVAL_SECONDS).
         if time.monotonic() - self._last_battery_monotonic >= BATTERY_POLL_INTERVAL_SECONDS:
@@ -124,13 +136,99 @@ class TecnoalarmTPCoordinator(DataUpdateCoordinator):
             "programs": program_data,
             "zones": dict(self._last_zones),
             "battery": dict(self._last_battery),
+            "open_zones_by_program": dict(self._last_open_zones_by_program),
         }
 
+    def _arm_with_isolation(self, idx: int) -> tuple[bool, list[int]]:
+        """Esegue nell'executor: isola le zone aperte del programma (se ce ne
+        sono), poi arma. Se l'isolamento di una zona fallisce, reintegra
+        quelle gia' isolate in questo tentativo e rinuncia all'arm (non ha
+        senso armare con zone aperte non escluse). Se l'arm stesso fallisce
+        dopo aver isolato zone, le reintegra subito (nessuna isolazione
+        "orfana" senza un arm riuscito a giustificarla)."""
+        zone_prog = idx + 1
+        try:
+            open_zones = self.panel.list_open_zones_for_program(zone_prog)
+        except Exception as err:
+            _LOGGER.warning(
+                "Impossibile leggere le zone aperte del programma %d, procedo comunque con l'arm: %s",
+                zone_prog, err,
+            )
+            open_zones = []
+
+        isolated: list[int] = []
+        for zone in open_zones:
+            try:
+                if not self.panel.isolate_zone(zone):
+                    raise RuntimeError("isolamento rifiutato (NAK)")
+                isolated.append(zone)
+            except Exception as err:
+                _LOGGER.error(
+                    "Isolamento zona %d fallito (%s): rinuncio all'arm del programma %d e reintegro le zone gia' isolate",
+                    zone, err, zone_prog,
+                )
+                for z in isolated:
+                    try:
+                        self.panel.reintegrate_zone(z)
+                    except Exception:
+                        pass
+                return False, []
+
+        ok = self.panel.arm(zone_prog)
+        if ok:
+            if isolated:
+                self._auto_isolated_zones[idx] = isolated
+            return True, isolated
+
+        for z in isolated:
+            try:
+                self.panel.reintegrate_zone(z)
+            except Exception:
+                pass
+        return False, []
+
+    def _disarm_with_reintegration(self, idx: int) -> tuple[bool, list[int]]:
+        """Esegue nell'executor: disarma, poi reintegra le zone che erano
+        state isolate automaticamente per l'ultimo arm di questo programma."""
+        ok = self.panel.disarm(idx + 1)
+        reintegrated: list[int] = []
+        if ok:
+            for zone in self._auto_isolated_zones.pop(idx, []):
+                try:
+                    if self.panel.reintegrate_zone(zone):
+                        reintegrated.append(zone)
+                    else:
+                        _LOGGER.warning("Reintegrazione zona %d rifiutata (NAK)", zone)
+                except Exception as err:
+                    _LOGGER.warning("Reintegrazione zona %d fallita: %s", zone, err)
+        return ok, reintegrated
+
     async def async_arm(self, idx: int) -> bool:
-        return await self.hass.async_add_executor_job(self.panel.arm, idx + 1)
+        ok, isolated = await self.hass.async_add_executor_job(self._arm_with_isolation, idx)
+        if ok and isolated:
+            names = ", ".join(self.zone_names.get(z - 1, f"Zona {z}") for z in isolated)
+            pname = self.program_names.get(idx, f"Programma {idx + 1}")
+            _LOGGER.warning("Arm %s: zone aperte escluse automaticamente: %s", pname, names)
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Tecnoalarm TP - Zone escluse",
+                    "message": (
+                        f"Inserendo '{pname}' sono state escluse automaticamente le zone "
+                        f"aperte: {names}. Verranno reintegrate al disinserimento."
+                    ),
+                    "notification_id": f"tecnoalarm_tp_isolated_{idx}",
+                },
+            )
+        return ok
 
     async def async_disarm(self, idx: int) -> bool:
-        return await self.hass.async_add_executor_job(self.panel.disarm, idx + 1)
+        ok, reintegrated = await self.hass.async_add_executor_job(self._disarm_with_reintegration, idx)
+        if reintegrated:
+            names = ", ".join(self.zone_names.get(z - 1, f"Zona {z}") for z in reintegrated)
+            _LOGGER.info("Disarm programma %d: zone reintegrate: %s", idx + 1, names)
+        return ok
 
     async def async_close(self) -> None:
         await self.hass.async_add_executor_job(self.panel.close)
