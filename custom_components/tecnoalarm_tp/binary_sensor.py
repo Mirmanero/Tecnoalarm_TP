@@ -120,7 +120,7 @@ class ProgramZonesClosedBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def extra_state_attributes(self) -> dict:
         open_zones = self.coordinator.data["open_zones_by_program"].get(self._program_idx, [])
         names = [self.coordinator.zone_names.get(z - 1, f"Zona {z}") for z in open_zones]
-        return {"open_zones": names}
+        return {"open_zones": ", ".join(names)}
 
     @property
     def icon(self) -> str:

@@ -71,6 +71,19 @@ _OP_TELEC_ON, _OP_TELEC_OFF = 11, 12
 # programma. Confermato sul campo: distingue correttamente zone condivise
 # da piu' programmi e zone non assegnate a nessun programma.
 _OP_LISTZONEOPEN = 24
+# OP_CLR_MEM_COD_IP / OP_CLR_MEM_CHI_IP nell'app ufficiale myTecnoalarm
+# (ProtThread.java, decompilato dall'APK): stessa forma di comando di
+# arm/disarm (stesso record 2306, stessa funzione SendSupMakeOper, solo
+# op[0] diverso), quindi quasi certamente un "azzera memoria allarme" del
+# programma indicato. NON PERO' MAI USATO da nessuna schermata dell'app
+# ufficiale (ProgActivity.java, quella di arm/disarm, imposta solo gli
+# opcode 0/3/4) - a differenza di arm/disarm/isola/telecomando, che avevamo
+# gia' visto realmente usati prima di implementarli, questo non ha alcun
+# riferimento concreto di utilizzo. clear_memory() sotto esiste ma non e'
+# richiamata da nessuna parte dell'integrazione: va verificata sul campo
+# prima di usarla per davvero (vedi il suo docstring).
+_OP_CLR_MEM_COD = 16
+_OP_CLR_MEM_CHI = 17
 # Comandi del protocollo "diretto" (usati dal software Centro) per il GSM.
 # Frame: 10 02 | cmd(2) | idx(2) | datalen(2) | dati | crc; risposta 10 0c ...
 _CMD_GSM_INFO = 0x9995   # operatore + versione/modello modulo GSM
@@ -783,6 +796,26 @@ class TP42Panel(object):
     def disarm(self, program):
         """Disinserisce (disarma) il programma indicato (1-based)."""
         return self._oper(_OP_DIS, program)
+
+    def clear_memory(self, program, by_key=False):
+        """Azzera la memoria allarme del programma indicato (1-based).
+
+        NON VERIFICATA sul campo e NON richiamata da nessuna parte di questa
+        libreria o dell'integrazione: e' costruita per analogia con
+        arm()/disarm() (stesso opcode MKOPER, stessa funzione nell'app
+        ufficiale), ma nessuna schermata dell'app ufficiale la usa mai, a
+        differenza di arm/disarm/isola/telecomando che avevamo gia' visto
+        realmente in azione prima di implementarli qui. Prima di usarla per
+        davvero su una centrale reale, verificarne il comportamento con
+        cautela (vedi commento su _OP_CLR_MEM_COD/_OP_CLR_MEM_CHI).
+
+        `by_key`: usa la variante "chiave/badge" (opcode 17) invece di
+        "codice utente" (opcode 16, default) - distinzione presente
+        nell'app ufficiale ma di significato non verificato in questo
+        contesto (probabilmente irrilevante per un accesso via codice PIN
+        come quello usato da questa libreria).
+        """
+        return self._oper(_OP_CLR_MEM_CHI if by_key else _OP_CLR_MEM_COD, program)
 
     def list_open_zones_for_program(self, program):
         """Zone aperte assegnate al programma indicato (1-based), secondo la
